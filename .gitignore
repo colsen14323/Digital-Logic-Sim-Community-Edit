@@ -75,3 +75,8 @@ crashlytics-build.properties
 /.idea
 /.vsconfig
 /TestData/*
+
+# Standalone simulation regression harness
+!/Tests/CompiledCircuit/CompiledCircuit.Tests.csproj
+/Tests/CompiledCircuit/bin/
+/Tests/CompiledCircuit/obj/

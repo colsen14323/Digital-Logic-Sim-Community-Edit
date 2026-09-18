@@ -21,6 +21,9 @@ namespace DLS.Simulation
 	{
 		// Used to temporarily pause cache use when a chip is viewed or certain interfaces are open.
 		public static bool useCaching = true;
+        // Independent switch for regression tests/profiling; inspection mode
+        // (useCaching == false) bypasses both accelerated paths.
+        public static bool useCompiledCircuits = true;
 		public static readonly Random rng = new();
 		static readonly Stopwatch stopwatch = Stopwatch.StartNew();
 		public static int stepsPerClockTransition;
@@ -151,7 +154,8 @@ namespace DLS.Simulation
 				{
 					ProcessBuiltinChip(nextSubChip); // We've reached a built-in chip, so process it directly
 				}
-				else if (!(useCaching && nextSubChip.TryProcessingFromCache()))
+				else if (!(useCaching &&
+                    ((useCompiledCircuits && nextSubChip.TryProcessingCompiled()) || nextSubChip.TryProcessingFromCache())))
 				{
 					StepChip(nextSubChip); // Recursively process custom chip
 				}

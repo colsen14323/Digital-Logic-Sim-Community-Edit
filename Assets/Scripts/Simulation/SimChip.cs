@@ -35,6 +35,35 @@ namespace DLS.Simulation
 		// Small, purely combinational chips use a LUT for fast calculations. These are stored here. Maps the name of a chip to its LUT.
 		public static readonly Dictionary<string, (int framCacheWasMade, uint[][] LUT)> combinationalChipCaches = new();
 		public uint[][] LUT = null;
+
+        // Topology is edited on the simulation thread. A global revision also
+        // invalidates programs in ancestors when a nested chip is changed.
+        static ulong circuitRevision;
+        ulong compiledRevision;
+        bool compilationAttempted;
+        int compiledFrame;
+        CompiledCircuit compiledCircuit;
+
+        CompiledCircuit GetCompiledCircuit()
+        {
+            if (!compilationAttempted || compiledRevision != circuitRevision)
+            {
+                compilationAttempted = true;
+                compiledRevision = circuitRevision;
+                compiledFrame = Simulator.simulationFrame;
+                CompiledCircuit.TryCompile(this, out compiledCircuit);
+            }
+            return compiledCircuit;
+        }
+
+        public bool TryProcessingCompiled()
+        {
+            CompiledCircuit circuit = GetCompiledCircuit();
+            if (circuit == null) return false;
+            circuit.Evaluate();
+            return true;
+        }
+
 		// Variables for the creating cache info popup.
 		public static bool isCreatingACache = false;
 		public static string nameOfChipWhoseCacheIsBeingCreated;
@@ -283,6 +312,14 @@ namespace DLS.Simulation
 			if(ShouldAbort())
 				return -1;
 
+            // Do not spend exponential time/memory constructing a LUT for a
+            // chip already represented by a linear-size register program.
+            if (Simulator.useCompiledCircuits && GetCompiledCircuit() != null)
+            {
+                LUT = Array.Empty<uint[]>();
+                return compiledFrame;
+            }
+
 			int newestChild = -1;
 			foreach (SimChip chip in SubChips)
 			{
@@ -522,12 +559,14 @@ namespace DLS.Simulation
 
 		public void RemoveSubChip(int id)
 		{
+            unchecked { circuitRevision++; }
 			SubChips = SubChips.Where(s => s.ID != id).ToArray();
 		}
 
 
 		public void AddPin(SimPin pin, bool isInput)
 		{
+            unchecked { circuitRevision++; }
 			if (isInput)
 			{
 				Array.Resize(ref InputPins, InputPins.Length + 1);
@@ -544,18 +583,21 @@ namespace DLS.Simulation
 
 		public void RemovePin(int removePinID)
 		{
+            unchecked { circuitRevision++; }
 			InputPins = InputPins.Where(p => p.ID != removePinID).ToArray();
 			OutputPins = OutputPins.Where(p => p.ID != removePinID).ToArray();
 		}
 
 		public void AddSubChip(SimChip subChip)
 		{
+            unchecked { circuitRevision++; }
 			Array.Resize(ref SubChips, SubChips.Length + 1);
 			SubChips[^1] = subChip;
 		}
 
 		public void AddConnection(PinAddress sourcePinAddress, PinAddress targetPinAddress)
 		{
+            unchecked { circuitRevision++; }
 			try
 			{
 				SimPin sourcePin = GetSimPinFromAddress(sourcePinAddress);
@@ -576,6 +618,7 @@ namespace DLS.Simulation
 
 		public void RemoveConnection(PinAddress sourcePinAddress, PinAddress targetPinAddress)
 		{
+            unchecked { circuitRevision++; }
 			SimPin sourcePin = GetSimPinFromAddress(sourcePinAddress);
 			(SimPin removeTargetPin, SimChip targetChip) = GetSimPinFromAddressWithChip(targetPinAddress);
 
